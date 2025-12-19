@@ -1,11 +1,15 @@
+import logging
 from fastapi import FastAPI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import ChatRequest, ChatResponse
 from app.bot.orchestrator import chat
+from app.routers.twilio import router as twilio_router
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Kavak AI Sales Bot")
 app.add_middleware(
@@ -15,6 +19,12 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+app.include_router(twilio_router)
+
+@app.get("/")
+def health():
+  return {"ok": True}
 
 @app.get("/health")
 def health():
