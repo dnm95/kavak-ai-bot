@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+
+openai
+
+pandas
+rapidfuzz
+
+pytest
+ruff
