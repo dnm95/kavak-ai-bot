@@ -1,5 +1,5 @@
-from typing import List, Tuple
-import os, json
+from typing import List, Tuple, Dict, Any
+import os, json, logging
 from openai import OpenAI
 
 from app.schemas import Message
@@ -7,9 +7,21 @@ from app.bot.tools_finance import finance_quote
 from app.bot.tools_catalog import catalog_search
 from app.bot.prompts import ROUTER_PROMPT, ANSWER_PROMPT, KAVAK_CONTEXT
 
+logger = logging.getLogger("orchestrator")
+
 MODEL = os.getenv("MODEL", "gpt-5-mini")
 
+# Keep the router context small and predictable
+ROUTER_CONTEXT_MAX = int(os.getenv("ROUTER_CONTEXT_MAX", "6"))
+
+# Prevent memory growth when a client keeps sending the entire chat forever
+MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "30"))
+
+
 def get_openai_client() -> OpenAI:
+  """
+  Create an OpenAI client using the OPENAI_API_KEY env var.
+  """
   api_key = os.getenv("OPENAI_API_KEY")
   if not api_key:
     raise RuntimeError("OPENAI_API_KEY is not set")
@@ -17,6 +29,9 @@ def get_openai_client() -> OpenAI:
 
 
 def _last_user_text(conversation: List[dict]) -> str:
+  """
+  Return the most recent user message content from a conversation list.
+  """
   for m in reversed(conversation):
     if m.get("role") == "user":
       return m.get("content", "")
@@ -24,7 +39,10 @@ def _last_user_text(conversation: List[dict]) -> str:
 
 
 def _coerce_number(x):
-  """Best-effort parse for numbers coming as strings like '350000' or '350,000'."""
+  """
+  Best-effort parse numbers coming from the router JSON.
+  Handles strings like "350000" or "350,000".
+  """
   if isinstance(x, (int, float)):
     return float(x)
   if isinstance(x, str):
@@ -36,38 +54,76 @@ def _coerce_number(x):
   return None
 
 
+def _cap_history(messages: List[Message]) -> List[Message]:
+  """
+  Cap the conversation length to avoid unbounded growth.
+  For a demo, last ~30 messages is usually enough.
+  """
+  if len(messages) <= MAX_HISTORY_MESSAGES:
+    return messages
+  return messages[-MAX_HISTORY_MESSAGES:]
+
+
 async def chat(user_id: str, messages: List[Message]) -> Tuple[str, List[Message], dict]:
+  """
+  Main chat entrypoint:
+  1) Convert messages to OpenAI format
+  2) Run router to select intent/tool + extract fields
+  3) Execute tool (if any)
+  4) Run answer model with KAVAK_CONTEXT + tool_result_json + conversation
+  5) Return reply + updated conversation + debug metadata
+  """
   client = get_openai_client()
 
-  # Convert incoming Pydantic messages to OpenAI chat format
+  # Cap the incoming history (especially important for WhatsApp / long chats)
+  messages = _cap_history(messages)
+
+  # Convert Pydantic models to OpenAI chat format
   conversation = [{"role": m.role, "content": m.content} for m in messages]
 
-  # ROUTER sees last N turns (helps with context, but stays small)
-  router_context = conversation[-6:] if len(conversation) > 6 else conversation
+  # Router only sees last N messages to reduce cost and keep it focused
+  router_context = conversation[-ROUTER_CONTEXT_MAX:] if len(conversation) > ROUTER_CONTEXT_MAX else conversation
   last_user_message = _last_user_text(conversation)
 
-  r = client.responses.create(
-    model=MODEL,
-    input=[
-      {"role": "system", "content": ROUTER_PROMPT},
-      *router_context,
-    ],
-    reasoning={"effort": "minimal"},
-  )
-
-  raw = (r.output_text or "").strip()
+  # -------------------------
+  # 1) ROUTER CALL
+  # -------------------------
   try:
+    r = client.responses.create(
+      model=MODEL,
+      input=[
+        {"role": "system", "content": ROUTER_PROMPT},
+        *router_context,
+      ],
+      reasoning={"effort": "minimal"},
+    )
+    raw = (r.output_text or "").strip()
     route = json.loads(raw)
-  except Exception:
-    route = {"intent": "other", "extracted": {}, "tool": "none", "raw": raw}
+  except Exception as e:
+    # If router fails, we fall back to a safe default
+    logger.exception("Router failed: %s", e)
+    route = {"intent": "other", "extracted": {}, "tool": "none", "raw": ""}
 
   intent = route.get("intent", "other")
   extracted = route.get("extracted", {}) or {}
   tool = route.get("tool", "none")
 
-  tool_result = {"tool": "none"}
+  # Extra safety: accept only known tools
+  if tool not in {"finance_quote", "catalog_search", "none", "kb_answer"}:
+    tool = "none"
 
-  # ---- TOOLS ----
+  # Small guardrails (optional):
+  # - If intent looks like finance but tool was none, still attempt finance tool
+  if intent == "finance" and tool == "none":
+    tool = "finance_quote"
+  if intent == "catalog" and tool == "none":
+    tool = "catalog_search"
+
+  tool_result: Dict[str, Any] = {"tool": "none"}
+
+  # -------------------------
+  # 2) TOOL EXECUTION
+  # -------------------------
   if tool == "finance_quote":
     price = _coerce_number(extracted.get("price"))
     down = _coerce_number(extracted.get("down_payment"))
@@ -99,24 +155,35 @@ async def chat(user_id: str, messages: List[Message]) -> Tuple[str, List[Message
       ),
     }
 
-  # ---- ANSWER (for value_prop/catalog/finance/other) ----
-  a = client.responses.create(
-    model=MODEL,
-    input=[
-      {"role": "system", "content": ANSWER_PROMPT},
-      {"role": "system", "content": f"KAVAK_CONTEXT:\n{KAVAK_CONTEXT}"},
-      *conversation,
-      {
-        "role": "system",
-        "content": f"tool_result_json: {json.dumps(tool_result, ensure_ascii=False)}",
-      },
-    ],
-    reasoning={"effort": "minimal"},
-  )
-
-  reply = (a.output_text or "").strip()
+  # -------------------------
+  # 3) ANSWER CALL
+  # -------------------------
+  try:
+    a = client.responses.create(
+      model=MODEL,
+      input=[
+        {"role": "system", "content": ANSWER_PROMPT},
+        # Static grounded context for Kavak (value prop, processes, locations, docs)
+        {"role": "system", "content": f"KAVAK_CONTEXT:\n{KAVAK_CONTEXT}"},
+        # Full conversation so the assistant can be coherent
+        *conversation,
+        # Tool output is passed as system context to keep it "source of truth"
+        {
+          "role": "system",
+          "content": f"tool_result_json: {json.dumps(tool_result, ensure_ascii=False)}",
+        },
+      ],
+      reasoning={"effort": "minimal"},
+    )
+    reply = (a.output_text or "").strip()
+  except Exception as e:
+    # If model call fails, we return a safe user-facing error
+    logger.exception("Answer generation failed: %s", e)
+    reply = "Por ahora tuve un problema técnico al generar la respuesta. ¿Puedes intentar de nuevo en un momento?"
 
   updated_messages = list(messages) + [Message(role="assistant", content=reply)]
+  updated_messages = _cap_history(updated_messages)
+
   debug = {"intent": intent, "route": route, "tool_result": tool_result}
 
   return reply, updated_messages, debug
