@@ -9,7 +9,7 @@ Do NOT include markdown, comments, or extra text.
 OUTPUT JSON SCHEMA
 --------------------------------
 {
-  "intent": "value_prop" | "catalog" | "finance" | "other",
+  "intent": "value_prop" | "catalog" | "finance" | "greeting" | "other",
   "tool": "catalog_search" | "finance_quote" | "none",
   "extracted": {
     "price": number | null,
@@ -25,74 +25,45 @@ OUTPUT JSON SCHEMA
 }
 
 --------------------------------
-GENERAL RULES
+CRITICAL PRIORITY RULES
 --------------------------------
-- Focus ONLY on the LAST user message.
-- Use previous messages only to fill missing fields if clearly implied.
-- NEVER invent numbers, attributes, or preferences.
-- If something is not explicitly stated, use null.
-
---------------------------------
-TOOL SELECTION RULES
---------------------------------
-
-1) FINANCE QUOTE → tool="finance_quote"
-Use ONLY when the user explicitly asks for numbers or a calculation.
-
-Signals (Spanish):
-- "cuánto pago al mes"
-- "mensualidad"
-- "cotízame"
-- "simula"
-- "tabla"
-- "pago mensual"
-
-Required extraction:
-- price (car price)
-- down_payment (enganche; if user says "sin enganche", set to 0)
-
-If one of them is missing:
-- Still choose tool="finance_quote"
-- Leave missing values as null (assistant will ask follow-up questions).
+1. **Mixed Greetings:** If the user says a greeting AND a request (e.g., "Hola, busco un auto"), IGNORE the greeting. Classify based on the request (Intent: "catalog").
+2. **Context Awareness:** Use previous messages ONLY to fill missing fields (like 'price' or 'model') if the user refers to them implicitly (e.g., "cuánto de enganche por ese").
+3. **Nulls:** If a specific parameter is not mentioned or clearly implied, set it to null. Do NOT invent values.
 
 --------------------------------
-
-2) CATALOG SEARCH → tool="catalog_search"
-Use when the user asks for:
-- car availability
-- recommendations
-- searching by brand/model/year/budget/features
-
-Signals:
-- "busco"
-- "quiero un"
-- "recomiéndame"
-- "qué autos tienen"
-- "tienes un"
-- specific brands/models (e.g., "Mazda 3", "SUV")
-
-Extract whatever is explicitly mentioned.
-Do NOT assume preferences.
-
+INTENT & TOOL CLASSIFICATION
 --------------------------------
 
-3) VALUE / INFORMATIONAL → tool="none"
-Use when the user asks about:
-- Kavak value proposition
-- buying or selling process
-- warranty, trial period
-- locations / sedes
-- financing requirements or documents
+1) CATALOG SEARCH
+   - **Intent:** "catalog"
+   - **Tool:** "catalog_search"
+   - **Triggers:** User asks for availability, recommendations, or searches for a car.
+   - **Keywords:** "busco", "quiero un", "recomiéndame", "tienes", "muéstrame", or specific models ("Mazda 3").
 
-Examples:
-- "¿Qué documentos necesito para financiar?"
-- "¿Cómo funciona Kavak?"
-- "¿Dónde están en Monterrey?"
+2) FINANCE QUOTE
+   - **Intent:** "finance"
+   - **Tool:** "finance_quote"
+   - **Triggers:** User asks for numbers, monthly payments, or a calculation.
+   - **Keywords:** "cuánto pago", "mensualidad", "cotízame", "simula", "tabla", "pago mensual".
+   - **Extraction:** Try to extract 'price' and 'down_payment' (enganche). If user says "sin enganche", down_payment = 0.
 
---------------------------------
+3) VALUE PROPOSITION / INFO
+   - **Intent:** "value_prop"
+   - **Tool:** "none"
+   - **Triggers:** Questions about Kavak's process, locations, requirements, warranty.
+   - **Keywords:** "documentos", "requisitos", "garantía", "dónde están", "sedes", "vender mi auto".
 
-4) OTHER → tool="none"
-Use for greetings, thanks, or unrelated messages.
+4) GREETING
+   - **Intent:** "greeting"
+   - **Tool:** "none"
+   - **Triggers:** Pure greetings with NO other request.
+   - **Keywords:** "hola", "buenos días", "buenas", "hey", emojis like 👋.
+
+5) OTHER
+   - **Intent:** "other"
+   - **Tool:** "none"
+   - **Triggers:** Anything else that doesn't fit (e.g., "gracias", off-topic).
 
 --------------------------------
 RETURN ONLY JSON.

@@ -77,6 +77,11 @@ Apply in under 2 minutes → Data validation → Initial payment (down payment) 
 ## 6. KAVAK APP (POST-SALE)
 The Kavak app allows customers to manage their purchased vehicle.
 
+## 7. PREGUNTAS FRECUENTES (TONO CONVERSACIONAL)
+- **¿Aceptan autos a cuenta?**: Sí, tomamos tu auto como enganche.
+- **¿Es seguro?**: Totalmente, revisamos legal y mecánicamente cada auto.
+- **¿Entregan a domicilio?**: ¡Claro! Llevamos el auto a la puerta de tu casa.
+
 Main features:
 - Schedule maintenance services (Basic, Medium life, Long life).
 - Manage and apply warranty coverage.

@@ -32,8 +32,6 @@ A pragmatic demo of a Kavak Mexico AI sales agent, built with **Python 3.11** + 
 
 ## 🚀 Quickstart
 
-**Bonus Point:** This project prioritizes reproducibility. You can set it up in 2 steps.
-
 ### 1. Install Dependencies
 This command creates a virtual environment (`.venv`) and installs all requirements.
 ```bash
@@ -131,7 +129,7 @@ app/
 │   ├── orchestrator.py  # LLM routing & orchestration logic
 │   ├── tools_finance.py # Financing math calculations
 │   ├── tools_catalog.py # Pandas/Fuzzy search logic
-│   └── prompts.py       # System prompts & knowledge context
+│   └── prompts          # System prompts & knowledge context
 └── data/
     └── sample_caso_ai_engineer.csv  # Car catalog
 ```
@@ -139,24 +137,8 @@ app/
 ## 🧑‍💻 Developer Commands
 
 * `make run` - Start the server.
-* `make test` - Run unit tests.
 * `make lint` - Check code style.
 * `make fmt` - Auto-format code.
-
----
-
-## 🔮 Production Roadmap (High Level)
-
-To take this from a "Technical Challenge Demo" to **Production**:
-
-1.  **Persistence:** Replace in-memory dictionaries with **PostgreSQL** or **Redis** for robust session management.
-2.  **Testing:** Implement regression tests for prompts to ensure new iterations don't break existing logic.
-3.  **Scalability:**
-    * Introduce **Embeddings + Vector Search** (e.g., Pinecone/pgvector) for the catalog and knowledge base scaling.
-    * Use an async task queue (RabbitMQ/SQS) for handling high-volume webhooks.
-4.  **Deployment:** Containerize with **Docker** and deploy to AWS/GCP with autoscaling and HTTPS.
-
----
 
 ## 📄 License
 This project is a technical exercise for recruitment purposes.
