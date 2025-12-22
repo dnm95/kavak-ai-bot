@@ -46,7 +46,7 @@ Create a `.env` file in the project root:
 OPENAI_API_KEY=sk-your-openai-api-key-here
 
 # Optional defaults
-MODEL=gpt-4o-mini
+MODEL=gpt-4.1
 CATALOG_PATH=app/data/sample_caso_ai_engineer.csv
 ```
 

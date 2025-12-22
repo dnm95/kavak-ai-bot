@@ -9,7 +9,7 @@ from app.bot.prompts import ROUTER_PROMPT, ANSWER_PROMPT, KAVAK_CONTEXT
 
 logger = logging.getLogger("orchestrator")
 
-MODEL = os.getenv("MODEL", "gpt-5-mini")
+MODEL = os.getenv("MODEL", "gpt-4.1")
 
 # Keep the router context small and predictable
 ROUTER_CONTEXT_MAX = int(os.getenv("ROUTER_CONTEXT_MAX", "6"))
@@ -95,7 +95,6 @@ async def chat(user_id: str, messages: List[Message]) -> Tuple[str, List[Message
         {"role": "system", "content": ROUTER_PROMPT},
         *router_context,
       ],
-      reasoning={"effort": "minimal"},
     )
     raw = (r.output_text or "").strip()
     route = json.loads(raw)
@@ -173,7 +172,6 @@ async def chat(user_id: str, messages: List[Message]) -> Tuple[str, List[Message
           "content": f"tool_result_json: {json.dumps(tool_result, ensure_ascii=False)}",
         },
       ],
-      reasoning={"effort": "minimal"},
     )
     reply = (a.output_text or "").strip()
   except Exception as e:
